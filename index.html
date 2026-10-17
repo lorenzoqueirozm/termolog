@@ -178,6 +178,10 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
     <label class="fld" style="flex:1 1 130px"><b>Faixa (°C)</b>
       <span class="row" style="flex-wrap:nowrap;gap:5px"><input type="number" id="tMin" value="-30"><input type="number" id="tMax" value="120"></span></label>
   </div>
+  <label class="row" style="margin-top:10px;font-size:12.5px;color:var(--dim);cursor:pointer">
+    <input type="checkbox" id="applyVit" style="width:auto;margin:0">
+    Aplicar correção temporal aos valores (padrão: apenas sinalizar)
+  </label>
   <div class="row" style="margin-top:12px">
     <button class="pri" id="runBtn" disabled>Iniciar corrida</button>
     <button class="danger hidden" id="stopBtn">Parar</button>
@@ -212,6 +216,19 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
   <div class="thumbs" id="thumbs"></div>
 </section>
 
+<!-- 7 CONFERENCIA -->
+<section class="card">
+  <h2><span class="num">7</span>Conferência</h2>
+  <p class="hint">Nenhum reconhecimento de imagem é perfeito. Aqui você vê a <b>foto real do visor</b> ao lado de cada leitura e corrige o que estiver errado. As sinalizadas vêm primeiro. Conferir 200 miniaturas leva uns dois minutos e é o que transforma "99%" em "100%, verificado".</p>
+  <div class="row">
+    <button class="pri" id="revBtn" disabled>Abrir conferência</button>
+    <label class="row" style="font-size:12.5px;color:var(--dim);cursor:pointer;gap:5px">
+      <input type="checkbox" id="revOnlyFlag" checked style="width:auto;margin:0">só as sinalizadas</label>
+    <span id="revStat" style="font-size:12.5px;color:var(--dim)"></span>
+  </div>
+  <div id="revGrid" class="thumbs" style="max-height:none;margin-top:12px"></div>
+</section>
+
 <footer>Decodificação geométrica de 7 segmentos · rajada de 3 quadros com mediana · correção temporal por Viterbi · tudo local, sem servidor. A corrida é salva no navegador e sobrevive a recarregar a página.</footer>
 </div>
 
@@ -227,7 +244,7 @@ const RW=640,RH=260;
 const $=id=>document.getElementById(id);
 
 const S={stream:null,track:null,vw:0,vh:0,quad:[[.25,.33],[.75,.33],[.75,.67],[.25,.67]],
- drag:-1,magPt:null,cols:null,running:false,rows:[],t0:0,timer:null,wake:null,
+ drag:-1,magPt:null,cols:null,fitCells:null,fitInfo:null,lastProblems:[],running:false,rows:[],t0:0,timer:null,wake:null,
  pendingEvent:null,failRun:0,alarmOn:false};
 
 /* limiar de Otsu sobre uma lista curta de valores */
@@ -303,53 +320,129 @@ function cells(){
   for(let i=0;i<n;i++)o.push({x:L+span*i+(span-cw)/2,y:T,w:cw,h:B-T});
   return o;
 }
-/* mediana do miolo de um segmento — resiste a borrão e a vazamento do vizinho */
-function sampleSeg(gray,c,sb,sk){
-  const ex=sb[2]*c.w*.17,ey=sb[3]*c.h*.17;
-  const x0=c.x+sb[0]*c.w+ex,y0=c.y+sb[1]*c.h+ey;
-  const ww=Math.max(2,sb[2]*c.w-2*ex),hh=Math.max(2,sb[3]*c.h-2*ey);
-  const stx=Math.max(1,Math.floor(ww/12)),sty=Math.max(1,Math.floor(hh/12)),v=[];
-  for(let j=0;j<hh;j+=sty){const sh=sk*(1-(y0-c.y+j)/c.h)*c.w;
-    for(let i=0;i<ww;i+=stx){const x=Math.round(x0+i+sh),y=Math.round(y0+j);
-      if(x>=0&&x<RW&&y>=0&&y<RH)v.push(gray[y*RW+x]);}}
-  if(!v.length)return null;
-  v.sort((a,b)=>a-b);return v[v.length>>1];
+/* ===== MOTOR: a caixa de cada dígito vem DA TINTA, não de uma grade =====
+   Estrutura no estilo do ssocr (Auerswald): limiar adaptativo, correção de
+   inclinação, varredura de colunas para separar dígitos, '1' por proporção,
+   e verificações estruturais que sinalizam segmentação implausível. */
+function adaptiveInk(gray,dark,win,C){
+  const W=RW+1,I=new Float64Array(W*(RH+1));
+  for(let y=0;y<RH;y++){let r=0;
+    for(let x=0;x<RW;x++){r+=gray[y*RW+x];I[(y+1)*W+(x+1)]=I[y*W+(x+1)]+r;}}
+  const box=(x0,y0,x1,y1)=>{x0=Math.max(0,x0);y0=Math.max(0,y0);x1=Math.min(RW,x1);y1=Math.min(RH,y1);
+    const a2=(x1-x0)*(y1-y0);if(a2<=0)return 0;
+    return (I[y1*W+x1]-I[y0*W+x1]-I[y1*W+x0]+I[y0*W+x0])/a2;};
+  const r=win>>1,ink=new Uint8Array(RW*RH);
+  for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){const m=box(x-r,y-r,x+r,y+r);
+    ink[y*RW+x]= dark ? (gray[y*RW+x]<m-C?1:0) : (gray[y*RW+x]>m+C?1:0);}
+  return ink;
+}
+function open3(ink){
+  const a=new Uint8Array(ink.length),b=new Uint8Array(ink.length);
+  const at=(s2,x,y)=>(x<0||y<0||x>=RW||y>=RH)?0:s2[y*RW+x];
+  for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){let m=1;
+    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++)m&=at(ink,x+i,y+j);a[y*RW+x]=m;}
+  for(let y=0;y<RH;y++)for(let x=0;x<RW;x++){let m=0;
+    for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++)m|=at(a,x+i,y+j);b[y*RW+x]=m;}
+  return b;
+}
+function strokeThickness(ink){
+  let runs=0,px=0;
+  for(let y=8;y<RH-8;y+=4){let r=0;
+    for(let x=0;x<RW;x++){if(ink[y*RW+x])r++;else{if(r>2){runs++;px+=r;}r=0;}}}
+  return runs?px/runs:0;
+}
+/* inclinação = o valor que deixa os vales entre dígitos mais fundos */
+function findShear(ink,T,B){
+  let best=0,bs=-1;
+  for(let sh=-.34;sh<=.3401;sh+=.02){
+    const c=new Int32Array(RW);
+    for(let y=T;y<=B;y++){const d=Math.round(sh*(B-y));
+      for(let x=0;x<RW;x++){const sx2=x+d;if(sx2>=0&&sx2<RW)c[x]+=ink[y*RW+sx2];}}
+    let m=0;for(let x=0;x<RW;x++)m+=c[x];m/=RW;
+    let v=0;for(let x=0;x<RW;x++)v+=(c[x]-m)*(c[x]-m);
+    if(v>bs){bs=v;best=sh;}
+  }
+  return best;
+}
+function decodeInk(gray){
+  const dark=$('pol').value==='dark', nExp=+$('nDig').value;
+  let ink=adaptiveInk(gray,dark,61,6);
+  if(strokeThickness(ink)>=7)ink=open3(ink);
+  const row=new Int32Array(RH);let tot=0,rMax=0;
+  for(let y=0;y<RH;y++){let r=0;for(let x=0;x<RW;x++)r+=ink[y*RW+x];row[y]=r;tot+=r;rMax=Math.max(rMax,r);}
+  if(tot<150)return{fail:'pouca tinta',digits:[]};
+  let T=0,B=RH-1;
+  while(T<RH-1&&row[T]<rMax*.12)T++;
+  while(B>T+6&&row[B]<rMax*.12)B--;
+  const sl=findShear(ink,T,B);
+  if(Math.abs(sl)>.015){const o=new Uint8Array(ink.length);
+    for(let y=0;y<RH;y++){const d=Math.round(sl*(B-y));
+      for(let x=0;x<RW;x++){const sx2=x+d;if(sx2>=0&&sx2<RW)o[y*RW+x]=ink[y*RW+sx2];}}
+    ink=o;}
+  const col=new Int32Array(RW);let cMax=0;
+  for(let x=0;x<RW;x++){let c=0;for(let y=T;y<=B;y++)c+=ink[y*RW+x];col[x]=c;cMax=Math.max(cMax,c);}
+  const litc=x=>col[x]>Math.max(1,cMax*.05);
+  const runs=[];let st=-1;
+  for(let x=0;x<RW;x++){if(litc(x)&&st<0)st=x;else if(!litc(x)&&st>=0){if(x-st>=3)runs.push([st,x-1]);st=-1;}}
+  if(st>=0)runs.push([st,RW-1]);
+  if(!runs.length)return{fail:'sem dígitos',digits:[]};
+  let boxes=[];
+  for(const[x1,x2]of runs){let t2=RH,b2=-1;
+    for(let y=T;y<=B;y++){let c=0;for(let x=x1;x<=x2;x++)c+=ink[y*RW+x];
+      if(c>0){if(y<t2)t2=y;if(y>b2)b2=y;}}
+    if(b2>=t2)boxes.push({x:x1,y:t2,w:x2-x1+1,h:b2-t2+1});}
+  const hMax=Math.max.apply(null,boxes.map(b=>b.h));
+  boxes=boxes.filter(b=>!(b.h<hMax/3&&b.w<hMax/3&&b.y>T+(B-T)*.5));   // ponto decimal
+  boxes.forEach(b=>b.isOne=b.h/b.w>2.4);
+  if(!boxes.length)return{fail:'sem dígitos',digits:[]};
+  /* preenchimento de cada segmento, relativo À CAIXA DO DÍGITO */
+  const fills=[],meta=[];
+  for(const b of boxes){
+    if(b.isOne){meta.push(null);continue;}
+    const v=SEGBOX.map(sb=>{
+      const ex=sb[2]*b.w*.18,ey=sb[3]*b.h*.18;
+      const X0=Math.round(b.x+sb[0]*b.w+ex),X1=Math.round(b.x+(sb[0]+sb[2])*b.w-ex);
+      const Y0=Math.round(b.y+sb[1]*b.h+ey),Y1=Math.round(b.y+(sb[1]+sb[3])*b.h-ey);
+      let c=0,n=0;
+      for(let y=Y0;y<Y1;y++)for(let x=X0;x<X1;x++)
+        if(x>=0&&x<RW&&y>=0&&y<RH){c+=ink[y*RW+x];n++;}
+      return n?c/n:0;});
+    meta.push(v);for(const q of v)fills.push(q);
+  }
+  const out=[];
+  for(let i=0;i<boxes.length;i++){
+    const b=boxes[i];
+    if(b.isOne){out.push({blank:false,on:[0,1,1,0,0,0,0],box:b,cands:[{d:'1',cost:0}]});continue;}
+    const on=meta[i];
+    let b1=null,b2=null;
+    for(const d in PAT){if(d==='1')continue;
+      let c=0;for(let k=0;k<7;k++)c+=Math.abs(on[k]-PAT[d][k]);
+      if(b1===null||c<b1.cost){b2=b1;b1={d,cost:c};}
+      else if(b2===null||c<b2.cost){b2={d,cost:c};}}
+    out.push({blank:false,on,box:b,
+      cands:b2?[{d:b1.d,cost:b1.cost},{d:b2.d,cost:b2.cost}]:[{d:b1.d,cost:b1.cost}]});
+  }
+  /* VERIFICAÇÕES ESTRUTURAIS — sinalizam segmentação implausível */
+  const probs=[],bandH=B-T+1;
+  if(out.length!==nExp)probs.push('achou '+out.length+' dígitos, esperava '+nExp);
+  const no=out.filter(o=>!o.box.isOne);
+  if(no.length){const w2=no.map(o=>o.box.w).sort((a,b)=>a-b),wm=w2[w2.length>>1];
+    if(no.some(o=>o.box.w<wm*.55||o.box.w>wm*1.6))probs.push('larguras irregulares');}
+  if(out.some(o=>o.box.h<bandH*.62))probs.push('alturas irregulares');
+  if(out.length>=3){const ct=out.map(o=>o.box.x+o.box.w/2),df=[];
+    for(let i=1;i<ct.length;i++)df.push(ct[i]-ct[i-1]);
+    const mu=df.reduce((a,b)=>a+b,0)/df.length;
+    const sg=Math.sqrt(df.reduce((a,b)=>a+(b-mu)*(b-mu),0)/df.length);
+    if(mu>0&&sg/mu>.30)probs.push('espaçamento irregular');}
+  let mush=0;for(const o of out)for(const v of o.on)if(v>.30&&v<.70)mush++;
+  if(mush>2)probs.push('segmentos ambíguos');
+  return{digits:out,problems:probs,slant:sl,band:[T,B]};
 }
 function decodeFrame(gray){
-  const cs=cells(),dark=$('pol').value==='dark',sk=+$('skew').value/100,thr=+$('thr').value/100;
-  /* contraste da faixa dos dígitos */
-  const band=[];
-  for(const c of cs)for(let j=0;j<c.h;j+=3)for(let i=0;i<c.w;i+=3){
-    const x=Math.round(c.x+i),y=Math.round(c.y+j);
-    if(x>=0&&x<RW&&y>=0&&y<RH)band.push(gray[y*RW+x]);}
-  const bLo=band.length?pct(band,6):0,bHi=band.length?pct(band,94):1;
-  const bRng=Math.max(6,bHi-bLo);
-  /* medianas de todos os segmentos de todos os dígitos */
-  const M=[],raw=cs.map(c=>SEGBOX.map(sb=>{const m=sampleSeg(gray,c,sb,sk);
-    if(m!==null)M.push(m);return m;}));
-  /* separa aceso/apagado com Otsu sobre o conjunto inteiro do quadro:
-     muito mais estável que percentis por dígito, que o "1" distorce */
-  let fg=null,bg=null;
-  if(M.length>=5){
-    const T=otsu(M),A=M.filter(v=>v<T),B=M.filter(v=>v>=T);
-    if(A.length&&B.length){
-      const mA=A.reduce((a,b)=>a+b,0)/A.length,mB=B.reduce((a,b)=>a+b,0)/B.length;
-      if(mB-mA>=.28*bRng){fg=dark?mA:mB;bg=dark?mB:mA;}}
-  }
-  const toOn=m=>{
-    if(m===null)return 0;
-    if(fg!==null){const d=bg-fg||1;return Math.max(0,Math.min(1,(bg-m)/d));}
-    return Math.max(0,Math.min(1,dark?(bHi-m)/bRng:(m-bLo)/bRng));
-  };
-  const out=[];
-  for(let k=0;k<cs.length;k++){
-    const on=raw[k].map(toOn);
-    if(bRng<6||Math.max.apply(null,on)<thr){out.push({blank:true,on,cands:[]});continue;}
-    const sc=Object.keys(PAT).map(d=>({d,cost:PAT[d].reduce((s,p,i)=>s+Math.abs(on[i]-p),0)}))
-      .sort((a,b)=>a.cost-b.cost);
-    out.push({blank:false,on,cands:sc.slice(0,2)});
-  }
-  return out;
+  const r=decodeInk(gray);
+  S.lastProblems=r.problems||(r.fail?[r.fail]:[]);
+  S.fitCells=(r.digits||[]).map(d=>d.box);
+  return r.digits||[];
 }
 /* acha as colunas de cada dígito pelo vale de tinta entre eles */
 function autoFit(){
@@ -456,14 +549,15 @@ function drawStage(){
 }
 function drawSeg(dg){
   gx.drawImage(rect,0,0);
-  const cs=cells(),sk=+$('skew').value/100,thr=+$('thr').value/100;
+  const cs=(S.fitCells&&S.fitCells.length===(dg?dg.length:0))?S.fitCells:cells();
+  const thr=+$('thr').value/100;
   cs.forEach((c,ci)=>{
-    gx.strokeStyle=css('--accent');gx.lineWidth=1;gx.strokeRect(c.x,c.y,c.w,c.h);
+    gx.strokeStyle=css('--accent');gx.lineWidth=1.5;gx.strokeRect(c.x,c.y,c.w,c.h);
     SEGBOX.forEach((sb,si)=>{
-      const x=c.x+sb[0]*c.w+sk*(1-(sb[1]+sb[3]/2))*c.w,y=c.y+sb[1]*c.h;
+      const ex=sb[2]*c.w*.20,ey=sb[3]*c.h*.20;
       const lit=dg&&dg[ci]&&!dg[ci].blank&&dg[ci].on[si]>=thr;
-      gx.fillStyle=lit?'rgba(76,195,207,.75)':'rgba(240,115,106,.25)';
-      gx.fillRect(x,y,sb[2]*c.w,sb[3]*c.h);});
+      gx.fillStyle=lit?'rgba(76,195,207,.78)':'rgba(240,115,106,.22)';
+      gx.fillRect(c.x+sb[0]*c.w+ex,c.y+sb[1]*c.h+ey,sb[2]*c.w-2*ex,sb[3]*c.h-2*ey);});
   });
 }
 
@@ -492,6 +586,10 @@ function tick(){
           +' (margem '+gap.toFixed(2)+')</span>':'')+'</div>';
       }).join('');
       renderMeters();
+      const pb=S.lastProblems||[];
+      const am=$('autoMsg');
+      if(am)am.innerHTML=pb.length?'<span class="bad">'+pb.join(' · ')+'</span>'
+        :'<span class="ok">segmentação plausível</span>';
     }
   }
   requestAnimationFrame(tick);
@@ -643,7 +741,7 @@ function loadCfg(){
   }catch(e){}
 }
 function saveRun(){try{localStorage.setItem(RUN,JSON.stringify(S.rows.map(r=>
-  ({t:r.t,raw:r.raw,corr:r.corr,conf:r.conf,status:r.status,ev:r.ev,jit:r.jit,n:r.n,th:r.th}))));}catch(e){}}
+  ({t:r.t,raw:r.raw,corr:r.corr,conf:r.conf,status:r.status,ev:r.ev,jit:r.jit,n:r.n,th:r.th,prob:r.prob,ver:r.ver,man:r.man}))));}catch(e){}}
 function loadRun(){try{const r=JSON.parse(localStorage.getItem(RUN)||'null');
   if(r&&r.length){S.rows=r.map(x=>Object.assign({cands:[]},x));render();}}catch(e){}}
 
@@ -710,6 +808,7 @@ function schedule(i){
     const t=(actual-S.t0)/1000;
     const row={t,cands:b?b.cands:[],conf:b?b.conf:0,raw:b?b.v:null,corr:null,
       jit:Math.round(actual-target),n:b?b.n:0,ev:S.pendingEvent||'',
+      prob:(S.lastProblems||[]).join(' · '),ver:false,man:null,
       th:rect.toDataURL('image/jpeg',.55)};
     S.pendingEvent=null;
     S.rows.push(row);
@@ -744,7 +843,7 @@ function viterbi(f,maxRate){
     dpA.push({i,cs,dp:cur});prev={cs,dp:cur};pi=i;}
   let k=0;const L=dpA[dpA.length-1];
   for(let a=1;a<L.dp.length;a++)if(L.dp[a].cost<L.dp[k].cost)k=a;
-  for(let s=dpA.length-1;s>=0;s--){f[dpA[s].i].corr=dpA[s].cs[k].v;k=dpA[s].dp[k].back;if(k<0)k=0;}
+  for(let s=dpA.length-1;s>=0;s--){f[dpA[s].i].vit=dpA[s].cs[k].v;k=dpA[s].dp[k].back;if(k<0)k=0;}
 }
 function finish(live){
   const mn=+$('tMin').value,mx=+$('tMax').value,mr=+$('maxRate').value;
@@ -752,13 +851,23 @@ function finish(live){
   f.forEach(r=>{if(r.cands&&r.cands.length){r.cands=r.cands.filter(c=>c.v>=mn&&c.v<=mx);
     r.raw=r.cands.length?r.cands[0].v:null;}});
   viterbi(f,mr);
+  /* A MEDIDA NUNCA É SOBRESCRITA. A continuidade só levanta bandeira.
+     Medimos que sobrescrever piorava: erro de geometria é suave no tempo,
+     então a suavização reforça o erro em vez de corrigi-lo. */
+  const aplicar=$('applyVit')&&$('applyVit').checked;
   let run=1;
   for(let i=1;i<f.length;i++){
-    if(f[i].corr!==null&&f[i].corr===f[i-1].corr)run++;else run=1;f[i].frozen=run>=9;}
+    if(f[i].raw!==null&&f[i].raw===f[i-1].raw)run++;else run=1;f[i].frozen=run>=9;}
   f.forEach(r=>{
-    r.status=r.corr===null?'FALHA':r.frozen?'CONGELADA?':
-      (r.raw!==null&&Math.abs(r.raw-r.corr)>1e-9)?'CORRIGIDA':
-      r.conf<.35?'DUVIDOSA':'OK';});
+    const salto=r.vit!=null&&r.raw!=null&&Math.abs(r.vit-r.raw)>1e-9;
+    r.corr = (aplicar&&salto)?r.vit:r.raw;
+    if(r.ver){r.corr=r.man!=null?r.man:r.raw;r.status='CONFERIDA';return;}
+    if(r.prob){r.corr=r.raw;r.status='REVISAR';return;}
+    r.status = r.raw===null?'FALHA'
+      : r.frozen?'CONGELADA?'
+      : salto?(aplicar?'CORRIGIDA':'SALTO?')
+      : (r.conf<.35?'DUVIDOSA':'OK');
+  });
   if(f.some(r=>r.status==='CONGELADA?')&&live)raiseAlarm('Mesmo valor há 9 leituras — o botão HOLD pode ter sido apertado.');
   saveRun();render();
 }
@@ -773,9 +882,9 @@ function render(){
   $('stats').innerHTML=`<div><b>${f.length}</b>leituras</div><div><b>${ok}</b>OK</div>
     <div><b>${co}</b>corrigidas</div><div><b>${bd}</b>duvidosas</div>
     <div><b>${(ac*100).toFixed(0)}%</b>confiança</div><div><b>${jt}</b>ms jitter máx</div>`;
-  ['csvBtn','jsonBtn','sheetBtn','pngBtn'].forEach(b=>$(b).disabled=!f.length);
+  ['csvBtn','jsonBtn','sheetBtn','pngBtn','revBtn'].forEach(b=>$(b).disabled=!f.length);
   $('tbl').querySelector('tbody').innerHTML=f.slice(-300).map((r,i)=>{
-    const c={OK:'pok',CORRIGIDA:'pcorr','CONGELADA?':'pwarn',DUVIDOSA:'pwarn',FALHA:'pbad'}[r.status]||'pwarn';
+    const c={OK:'pok',CONFERIDA:'pok',CORRIGIDA:'pcorr','SALTO?':'pwarn',REVISAR:'pbad','CONGELADA?':'pwarn',DUVIDOSA:'pwarn',FALHA:'pbad','ILEGÍVEL':'pbad'}[r.status]||'pwarn';
     return `<tr><td>${i+1}</td><td>${r.t.toFixed(1)}</td><td>${r.raw==null?'—':r.raw.toFixed(nd)}</td>
     <td>${r.corr==null?'—':r.corr.toFixed(nd)}</td><td>${((r.conf||0)*100).toFixed(0)}%</td>
     <td><span class="pill ${c}">${r.status}</span></td><td>${r.ev||''}</td></tr>`;}).join('');
@@ -810,7 +919,7 @@ function chart(){
   S.rows.forEach(r=>{if(r.corr==null){st=false;return;}st?g.lineTo(X(r.t),Y(r.corr)):g.moveTo(X(r.t),Y(r.corr));st=true;});
   g.stroke();
   S.rows.forEach(r=>{if(r.corr==null)return;
-    if(r.status==='CORRIGIDA'||r.status==='DUVIDOSA'||r.status==='CONGELADA?'){
+    if(r.status!=='OK'){
       g.fillStyle=r.status==='CORRIGIDA'?css('--corr'):css('--bad');
       g.beginPath();g.arc(X(r.t),Y(r.corr),3.2,0,7);g.fill();}
     if(r.ev){g.strokeStyle=css('--warn');g.globalAlpha=.6;g.beginPath();
@@ -848,11 +957,11 @@ function dl(name,text,mime){
 }
 $('csvBtn').addEventListener('click',()=>{
   const nd=+$('nDec').value;
-  const h='indice,t_s,T_bruto_C,T_corrigido_C,confianca,n_quadros_concordantes,jitter_ms,status,metodo_correcao,evento\n';
+  const h='indice,t_s,T_bruto_C,T_final_C,conferido_por_humano,problema_estrutural,confianca,n_quadros_concordantes,jitter_ms,status,evento\n';
   dl('termolog_leituras.csv',h+S.rows.map((r,i)=>[i+1,r.t.toFixed(2),
     r.raw==null?'':r.raw.toFixed(nd),r.corr==null?'':r.corr.toFixed(nd),
-    (r.conf||0).toFixed(3),r.n||0,r.jit||0,r.status,
-    r.status==='CORRIGIDA'?'viterbi_continuidade':'nenhum',r.ev||''].join(',')).join('\n'),'text/csv');
+    r.ver?'sim':'nao',(r.prob||'').replace(/,/g,';'),
+    (r.conf||0).toFixed(3),r.n||0,r.jit||0,r.status,r.ev||''].join(',')).join('\n'),'text/csv');
 });
 $('jsonBtn').addEventListener('click',()=>{
   dl('termolog_metadados.json',JSON.stringify({
@@ -940,7 +1049,7 @@ $('pngBtn').addEventListener('click',()=>{
     st?g.lineTo(X(r.t),Y(r.corr)):g.moveTo(X(r.t),Y(r.corr));st=true;});
   g.stroke();
   S.rows.forEach(r=>{if(r.corr==null)return;
-    if(r.status==='CORRIGIDA'||r.status==='DUVIDOSA'||r.status==='CONGELADA?'){
+    if(r.status!=='OK'){
       g.fillStyle=r.status==='CORRIGIDA'?'#6b4ea8':'#a93226';
       g.beginPath();g.arc(X(r.t),Y(r.corr),6,0,7);g.fill();}});
   // legenda
@@ -965,6 +1074,59 @@ $('clearBtn').addEventListener('click',()=>{
   S.rows=[];try{localStorage.removeItem(RUN);}catch(e){}
   $('runStat').textContent='';render();
 });
+
+/* ============ conferência ============ */
+function revList(){
+  const only=$('revOnlyFlag').checked;
+  return S.rows.map((r,i)=>({r,i}))
+    .filter(o=>!only||o.r.status==='REVISAR'||o.r.status==='FALHA'
+      ||o.r.status==='DUVIDOSA'||o.r.status==='SALTO?'||o.r.status==='CONGELADA?');
+}
+function renderReview(){
+  const nd=+$('nDec').value,L=revList();
+  const pend=S.rows.filter(r=>!r.ver&&(r.status==='REVISAR'||r.status==='FALHA'||r.status==='DUVIDOSA')).length;
+  $('revStat').textContent=`${L.length} para ver · ${S.rows.filter(r=>r.ver).length} conferidas · ${pend} pendentes`;
+  $('revGrid').innerHTML=L.map(o=>{
+    const r=o.r,v=r.corr==null?'—':r.corr.toFixed(nd);
+    const col=r.ver?'var(--ok)':(r.prob?'var(--bad)':'var(--dim)');
+    return `<figure data-i="${o.i}" style="cursor:pointer">
+      ${r.th?`<img src="${r.th}" alt="">`:'<div style="height:44px;background:#000;border-radius:4px"></div>'}
+      <figcaption style="color:${col}">${r.t.toFixed(0)}s<br><b style="font-size:13px">${v}</b>${r.ver?' ✓':''}</figcaption>
+    </figure>`;}).join('')||'<span style="font-size:12.5px;color:var(--dim)">Nada para conferir.</span>';
+  $('revGrid').querySelectorAll('figure[data-i]').forEach(f=>
+    f.addEventListener('click',()=>editRow(+f.dataset.i)));
+}
+function editRow(i){
+  const r=S.rows[i],nd=+$('nDec').value;
+  const cur=r.corr==null?'':r.corr.toFixed(nd);
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:50;display:flex;'
+    +'align-items:center;justify-content:center;padding:18px';
+  el.innerHTML=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px;max-width:380px;width:100%">
+    <div style="font-size:12.5px;color:var(--dim);margin-bottom:8px">Leitura em ${r.t.toFixed(0)} s${r.prob?' — '+r.prob:''}</div>
+    ${r.th?`<img src="${r.th}" style="width:100%;border-radius:7px;border:1px solid var(--line)">`:''}
+    <label class="fld" style="margin-top:12px"><b>Temperatura lida por você (°C)</b>
+      <input type="number" step="0.1" id="revIn" value="${cur}"></label>
+    <div class="row" style="margin-top:12px">
+      <button class="pri" id="revOk">Confirmar</button>
+      <button id="revBad">Marcar ilegível</button>
+      <button id="revX">Cancelar</button>
+    </div></div>`;
+  document.body.appendChild(el);
+  const inp=el.querySelector('#revIn');inp.focus();inp.select();
+  const close=()=>el.remove();
+  el.querySelector('#revX').onclick=close;
+  el.querySelector('#revOk').onclick=()=>{
+    const v=parseFloat(inp.value);
+    if(Number.isFinite(v)){r.man=v;r.corr=v;r.ver=true;r.status='CONFERIDA';}
+    close();saveRun();render();renderReview();};
+  el.querySelector('#revBad').onclick=()=>{
+    r.man=null;r.corr=null;r.ver=true;r.status='ILEGÍVEL';close();saveRun();render();renderReview();};
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')el.querySelector('#revOk').click();});
+}
+$('revBtn').addEventListener('click',renderReview);
+$('revOnlyFlag').addEventListener('change',renderReview);
 
 /* ============ boot ============ */
 loadCfg();loadRun();render();tick();
