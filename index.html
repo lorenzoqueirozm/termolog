@@ -93,7 +93,15 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
     <button class="sm" id="lockBtn" disabled>Travar foco e exposição</button>
     <button class="sm" id="torchBtn" disabled>Lanterna</button>
   </div>
-  <div class="sl hidden" id="zoomWrap"><span>Zoom</span><input type="range" id="zoom"><o id="zoomO">1×</o></div>
+  <div class="row" style="margin-top:10px">
+    <span style="font-size:12px;color:var(--dim)">Zoom</span>
+    <button class="sm zb" data-z="1">1×</button>
+    <button class="sm zb" data-z="2">2×</button>
+    <button class="sm zb" data-z="5">5×</button>
+    <button class="sm zb" data-z="10">10×</button>
+  </div>
+  <div class="sl hidden" id="zoomWrap"><span>Ajuste fino</span><input type="range" id="zoom"><o id="zoomO">1×</o></div>
+  <p class="hint" id="zoomMsg" style="margin:6px 0 0"></p>
   <p class="hint" id="camInfo" style="margin:10px 0 0"></p>
   <video id="vid" playsinline muted></video>
 </section>
@@ -104,14 +112,17 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
   <p class="hint">Arraste os 4 pontos para os cantos do visor, na ordem em que você lê: ① cima-esquerda, ② cima-direita, ③ baixo-direita, ④ baixo-esquerda. Termômetro deitado? Marque girado — a perspectiva é corrigida.</p>
   <canvas id="stage" width="720" height="540"></canvas>
   <div class="row" style="margin-top:9px">
-    <div style="flex:1 1 150px">
-      <div style="font-family:var(--m);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)">Visor corrigido</div>
-      <canvas id="rect" width="480" height="200"></canvas>
-    </div>
-    <div style="flex:1 1 150px">
-      <div style="font-family:var(--m);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)">Segmentos</div>
-      <canvas id="segv" width="480" height="200"></canvas>
-    </div>
+    <button class="sm" id="rotBtn">Girar 90°</button>
+    <button class="sm" id="resetQuad">Recentralizar</button>
+    <span style="font-size:11.5px;color:var(--dim)">Números de lado? Toque em Girar.</span>
+  </div>
+  <div style="margin-top:12px">
+    <div style="font-family:var(--m);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)">Segmentos amostrados — é aqui que se vê o erro</div>
+    <canvas id="segv" width="640" height="260"></canvas>
+  </div>
+  <div style="margin-top:10px">
+    <div style="font-family:var(--m);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)">Visor corrigido</div>
+    <canvas id="rect" width="640" height="260"></canvas>
   </div>
 </section>
 
@@ -130,6 +141,11 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
 <!-- 4 CALIBRACAO -->
 <section class="card">
   <h2><span class="num">4</span>Calibração</h2>
+  <p class="hint">Toque em <b>Auto-ajustar</b> primeiro: ele acha as colunas de cada dígito sozinho, pelo vale de tinta entre eles. É isso que resolve a confusão entre 3, 6 e 9.</p>
+  <div class="row" style="margin-bottom:12px">
+    <button class="pri" id="autoBtn">Auto-ajustar dígitos</button>
+    <span id="autoMsg" style="font-size:12px;color:var(--dim)"></span>
+  </div>
   <div class="row">
     <label class="fld" style="flex:1 1 72px"><b>Dígitos</b><input type="number" id="nDig" min="1" max="5" value="3"></label>
     <label class="fld" style="flex:1 1 72px"><b>Decimais</b><input type="number" id="nDec" min="0" max="2" value="1"></label>
@@ -148,6 +164,14 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
 <!-- 5 CORRIDA -->
 <section class="card">
   <h2><span class="num">5</span>Corrida</h2>
+  <div class="row" style="margin-bottom:10px">
+    <span style="font-size:12px;color:var(--dim)">Coletar a cada</span>
+    <button class="sm ib" data-i="1">1 s</button>
+    <button class="sm ib" data-i="3">3 s</button>
+    <button class="sm ib" data-i="5">5 s</button>
+    <button class="sm ib" data-i="10">10 s</button>
+    <button class="sm" id="ibCustom">Personalizar</button>
+  </div>
   <div class="row">
     <label class="fld" style="flex:1 1 92px"><b>Intervalo (s)</b><input type="number" id="interval" min="1" step="0.5" value="3"></label>
     <label class="fld" style="flex:1 1 92px"><b>ΔT máx (°C/s)</b><input type="number" id="maxRate" min="0.01" step="0.05" value="0.5"></label>
@@ -176,6 +200,7 @@ footer{margin-top:22px;font-size:11.5px;color:var(--dim);border-top:1px solid va
   <div class="stats" id="stats"></div>
   <canvas id="chart" width="860" height="280"></canvas>
   <div class="row" style="margin-top:11px">
+    <button class="sm" id="pngBtn" disabled>Salvar gráfico (PNG)</button>
     <button class="sm" id="csvBtn" disabled>CSV</button>
     <button class="sm" id="jsonBtn" disabled>Metadados</button>
     <button class="sm" id="sheetBtn" disabled>Folha de provas</button>
@@ -198,11 +223,24 @@ const PAT={'0':[1,1,1,1,1,1,0],'1':[0,1,1,0,0,0,0],'2':[1,1,0,1,1,0,1],'3':[1,1,
  '8':[1,1,1,1,1,1,1],'9':[1,1,1,1,0,1,1]};
 const SEGBOX=[[.26,.03,.48,.13],[.79,.14,.16,.31],[.79,.55,.16,.31],[.26,.84,.48,.13],
  [.05,.55,.16,.31],[.05,.14,.16,.31],[.26,.435,.48,.13]];
-const RW=480,RH=200;
+const RW=640,RH=260;
 const $=id=>document.getElementById(id);
 
 const S={stream:null,track:null,vw:0,vh:0,quad:[[.25,.33],[.75,.33],[.75,.67],[.25,.67]],
- drag:-1,running:false,rows:[],t0:0,timer:null,wake:null,pendingEvent:null,failRun:0,alarmOn:false};
+ drag:-1,magPt:null,cols:null,running:false,rows:[],t0:0,timer:null,wake:null,
+ pendingEvent:null,failRun:0,alarmOn:false};
+
+/* limiar de Otsu sobre uma lista curta de valores */
+function otsu(vals){
+  const s=vals.slice().sort((a,b)=>a-b),n=s.length;
+  if(n<2)return s[0];
+  const tot=s.reduce((a,b)=>a+b,0);
+  let pre=0,best=-1,thr=s[0];
+  for(let i=1;i<n;i++){pre+=s[i-1];
+    const mA=pre/i,mB=(tot-pre)/(n-i),v=i*(n-i)*(mA-mB)*(mA-mB);
+    if(v>best){best=v;thr=(mA+mB)/2;}}
+  return thr;
+}
 
 const vid=$('vid');
 const stage=$('stage'),sx=stage.getContext('2d');
@@ -256,36 +294,104 @@ function quality(gray){
 
 /* ============ decodificação ============ */
 function cells(){
-  const n=+$('nDig').value,L=+$('mL').value/100*RW,R=RW-(+$('mR').value/100*RW);
-  const T=+$('mT').value/100*RH,B=RH-(+$('mB').value/100*RH),gp=+$('gap').value/100;
-  const span=(R-L)/n,cw=span*(1-gp),o=[];
+  const n=+$('nDig').value;
+  const T=+$('mT').value/100*RH,B=RH-(+$('mB').value/100*RH);
+  if(S.cols&&S.cols.length===n)
+    return S.cols.map(c=>({x:c[0],y:T,w:Math.max(4,c[1]-c[0]),h:B-T}));
+  const L=+$('mL').value/100*RW,R=RW-(+$('mR').value/100*RW);
+  const gp=+$('gap').value/100,span=(R-L)/n,cw=span*(1-gp),o=[];
   for(let i=0;i<n;i++)o.push({x:L+span*i+(span-cw)/2,y:T,w:cw,h:B-T});
   return o;
 }
+/* mediana do miolo de um segmento — resiste a borrão e a vazamento do vizinho */
+function sampleSeg(gray,c,sb,sk){
+  const ex=sb[2]*c.w*.17,ey=sb[3]*c.h*.17;
+  const x0=c.x+sb[0]*c.w+ex,y0=c.y+sb[1]*c.h+ey;
+  const ww=Math.max(2,sb[2]*c.w-2*ex),hh=Math.max(2,sb[3]*c.h-2*ey);
+  const stx=Math.max(1,Math.floor(ww/12)),sty=Math.max(1,Math.floor(hh/12)),v=[];
+  for(let j=0;j<hh;j+=sty){const sh=sk*(1-(y0-c.y+j)/c.h)*c.w;
+    for(let i=0;i<ww;i+=stx){const x=Math.round(x0+i+sh),y=Math.round(y0+j);
+      if(x>=0&&x<RW&&y>=0&&y<RH)v.push(gray[y*RW+x]);}}
+  if(!v.length)return null;
+  v.sort((a,b)=>a-b);return v[v.length>>1];
+}
 function decodeFrame(gray){
-  const cs=cells(),dark=$('pol').value==='dark',sk=+$('skew').value/100,thr=+$('thr').value/100,out=[];
-  for(const c of cs){
-    const vals=[];
-    for(let j=0;j<c.h;j+=2){const sh=sk*(1-j/c.h)*c.w;
-      for(let i=0;i<c.w;i+=2){const x=Math.round(c.x+i+sh),y=Math.round(c.y+j);
-        if(x>=0&&x<RW&&y>=0&&y<RH)vals.push(gray[y*RW+x]);}}
-    if(!vals.length){out.push({blank:true,on:[],cands:[]});continue;}
-    const lo=pct(vals,8),hi=pct(vals,92),rng=hi-lo,on=[];
-    for(const sb of SEGBOX){
-      let s=0,c2=0;const x0=c.x+sb[0]*c.w,y0=c.y+sb[1]*c.h,ww=sb[2]*c.w,hh=sb[3]*c.h;
-      for(let j=0;j<hh;j++){const sh=sk*(1-(y0-c.y+j)/c.h)*c.w;
-        for(let i=0;i<ww;i++){const x=Math.round(x0+i+sh),y=Math.round(y0+j);
-          if(x>=0&&x<RW&&y>=0&&y<RH){s+=gray[y*RW+x];c2++;}}}
-      const m=c2?s/c2:0;
-      let v=rng<6?0:(dark?(hi-m)/rng:(m-lo)/rng);
-      on.push(Math.max(0,Math.min(1,v)));
-    }
-    if(rng<6||Math.max.apply(null,on)<thr){out.push({blank:true,on,cands:[]});continue;}
+  const cs=cells(),dark=$('pol').value==='dark',sk=+$('skew').value/100,thr=+$('thr').value/100;
+  /* contraste da faixa dos dígitos */
+  const band=[];
+  for(const c of cs)for(let j=0;j<c.h;j+=3)for(let i=0;i<c.w;i+=3){
+    const x=Math.round(c.x+i),y=Math.round(c.y+j);
+    if(x>=0&&x<RW&&y>=0&&y<RH)band.push(gray[y*RW+x]);}
+  const bLo=band.length?pct(band,6):0,bHi=band.length?pct(band,94):1;
+  const bRng=Math.max(6,bHi-bLo);
+  /* medianas de todos os segmentos de todos os dígitos */
+  const M=[],raw=cs.map(c=>SEGBOX.map(sb=>{const m=sampleSeg(gray,c,sb,sk);
+    if(m!==null)M.push(m);return m;}));
+  /* separa aceso/apagado com Otsu sobre o conjunto inteiro do quadro:
+     muito mais estável que percentis por dígito, que o "1" distorce */
+  let fg=null,bg=null;
+  if(M.length>=5){
+    const T=otsu(M),A=M.filter(v=>v<T),B=M.filter(v=>v>=T);
+    if(A.length&&B.length){
+      const mA=A.reduce((a,b)=>a+b,0)/A.length,mB=B.reduce((a,b)=>a+b,0)/B.length;
+      if(mB-mA>=.28*bRng){fg=dark?mA:mB;bg=dark?mB:mA;}}
+  }
+  const toOn=m=>{
+    if(m===null)return 0;
+    if(fg!==null){const d=bg-fg||1;return Math.max(0,Math.min(1,(bg-m)/d));}
+    return Math.max(0,Math.min(1,dark?(bHi-m)/bRng:(m-bLo)/bRng));
+  };
+  const out=[];
+  for(let k=0;k<cs.length;k++){
+    const on=raw[k].map(toOn);
+    if(bRng<6||Math.max.apply(null,on)<thr){out.push({blank:true,on,cands:[]});continue;}
     const sc=Object.keys(PAT).map(d=>({d,cost:PAT[d].reduce((s,p,i)=>s+Math.abs(on[i]-p),0)}))
       .sort((a,b)=>a.cost-b.cost);
     out.push({blank:false,on,cands:sc.slice(0,2)});
   }
   return out;
+}
+/* acha as colunas de cada dígito pelo vale de tinta entre eles */
+function autoFit(){
+  const gray=rectify();if(!gray)return 'Sem imagem.';
+  const dark=$('pol').value==='dark';
+  const lo=pct(gray,5),hi=pct(gray,95),rng=Math.max(8,hi-lo);
+  const ink=v=>Math.max(0,Math.min(1,dark?(hi-v)/rng:(v-lo)/rng));
+  const col=new Float32Array(RW),row=new Float32Array(RH);
+  for(let y=0;y<RH;y++){let r=0;
+    for(let x=0;x<RW;x++){const v=ink(gray[y*RW+x]);col[x]+=v;r+=v;}row[y]=r;}
+  let rMax=0,cMax=0;
+  for(let y=0;y<RH;y++)if(row[y]>rMax)rMax=row[y];
+  for(let x=0;x<RW;x++)if(col[x]>cMax)cMax=col[x];
+  if(rMax<RW*.04)return 'Pouca tinta no recorte — reveja os 4 cantos.';
+  let T=0,B=RH-1,L=0,R=RW-1;
+  while(T<RH-1&&row[T]<rMax*.30)T++;
+  while(B>T+4&&row[B]<rMax*.30)B--;
+  while(L<RW-1&&col[L]<cMax*.20)L++;
+  while(R>L+8&&col[R]<cMax*.20)R--;
+  const n=+$('nDig').value,span=(R-L)/n;
+  if(span<8)return 'Recorte estreito demais para '+n+' dígitos.';
+  const bounds=[L];
+  for(let i=1;i<n;i++){
+    const guess=L+span*i,w=span*.32;
+    let bx=Math.round(guess),bv=Infinity;
+    for(let x=Math.round(guess-w);x<=Math.round(guess+w);x++){
+      if(x<=L||x>=R)continue;
+      if(col[x]<bv){bv=col[x];bx=x;}}
+    bounds.push(bx);
+  }
+  bounds.push(R);
+  const pad=Math.max(1,span*.05);
+  S.cols=[];
+  for(let i=0;i<n;i++)S.cols.push([bounds[i]+(i?pad:0),bounds[i+1]-(i<n-1?pad:0)]);
+  $('mT').value=Math.max(0,Math.min(45,Math.round(T/RH*100)));
+  $('mB').value=Math.max(0,Math.min(45,Math.round((RH-1-B)/RH*100)));
+  $('mL').value=Math.max(0,Math.min(60,Math.round(L/RW*100)));
+  $('mR').value=Math.max(0,Math.min(60,Math.round((RW-1-R)/RW*100)));
+  document.querySelectorAll('.sl input').forEach(i=>{
+    const o=i.parentElement.querySelector('o');if(o)o.textContent=i.value+'%';});
+  saveCfg();
+  return null;
 }
 function assemble(dg,pick){
   const nd=+$('nDec').value;let str='',started=false;
@@ -312,6 +418,13 @@ const confOf=c=>!c.length?0:(c.length===1?1:Math.max(0,Math.min(1,(c[1].cost-c[0
 
 /* ============ desenho ============ */
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function fitStage(){
+  if(!S.vw)return;
+  const maxW=Math.min(900,Math.max(320,(document.querySelector('.wrap').clientWidth||360)*2));
+  const maxH=1100;
+  const sc=Math.min(maxW/S.vw,maxH/S.vh);
+  stage.width=Math.round(S.vw*sc);stage.height=Math.round(S.vh*sc);
+}
 function drawStage(){
   if(!S.vw)return;
   const sc=Math.min(stage.width/S.vw,stage.height/S.vh);
@@ -325,6 +438,21 @@ function drawStage(){
     sx.fillStyle='#04201f';sx.font='bold 14px monospace';sx.textAlign='center';sx.textBaseline='middle';
     sx.fillText(String(i+1),q[0],q[1]);});
   stage._b={ox,oy,dw,dh};
+  /* lupa: amplia 4× o que está sob o dedo, do lado oposto da tela */
+  if(S.drag>=0&&S.magPt){
+    const Rr=Math.min(104,stage.width*.24),Z=4,[mx,my]=S.magPt;
+    const px=mx<stage.width/2?stage.width-Rr-12:Rr+12;
+    const py=my<stage.height/2?stage.height-Rr-12:Rr+12;
+    const sp=(mx-ox)/dw*S.vw,tp=(my-oy)/dh*S.vh,hs=(Rr/Z)/dw*S.vw;
+    sx.save();sx.beginPath();sx.arc(px,py,Rr,0,7);sx.closePath();sx.clip();
+    sx.fillStyle='#000';sx.fillRect(px-Rr,py-Rr,Rr*2,Rr*2);
+    try{sx.drawImage(vid,sp-hs,tp-hs,hs*2,hs*2,px-Rr,py-Rr,Rr*2,Rr*2);}catch(e){}
+    sx.restore();
+    sx.strokeStyle=css('--accent');sx.lineWidth=3;
+    sx.beginPath();sx.arc(px,py,Rr,0,7);sx.stroke();
+    sx.lineWidth=1.5;sx.beginPath();
+    sx.moveTo(px-18,py);sx.lineTo(px+18,py);sx.moveTo(px,py-18);sx.lineTo(px,py+18);sx.stroke();
+  }
 }
 function drawSeg(dg){
   gx.drawImage(rect,0,0);
@@ -353,8 +481,16 @@ function tick(){
       lastConf=confOf(cd);lastVal=cd.length?cd[0].v:null;
       $('live').innerHTML=(lastVal===null?'—':lastVal.toFixed(+$('nDec').value))+'<u> °C</u>';
       $('live').className='big '+(lastVal===null?'bad':(lastConf>=.35?'':'warn'));
-      $('segDump').textContent=dg.map((d,i)=>'D'+(i+1)+' '+(d.blank?'·······':
-        d.on.map(v=>v>=+$('thr').value/100?'█':'░').join(''))).join('  ');
+      const TH=+$('thr').value/100;
+      $('segDump').innerHTML='<div style="margin-top:6px">abcdefg</div>'+dg.map((d,i)=>{
+        if(d.blank)return '<div>D'+(i+1)+' ······· <span style="color:var(--dim)">vazio</span></div>';
+        const gap=d.cands.length>1?d.cands[1].cost-d.cands[0].cost:1;
+        const cl=gap>=.6?'ok':(gap>=.3?'warn':'bad');
+        const bars=d.on.map(v=>v>=TH?'█':(v>=TH*.6?'▒':'░')).join('');
+        return '<div>D'+(i+1)+' '+bars+' <b class="'+cl+'">'+d.cands[0].d+'</b>'
+          +(d.cands[1]?' <span style="color:var(--dim)">ou '+d.cands[1].d
+          +' (margem '+gap.toFixed(2)+')</span>':'')+'</div>';
+      }).join('');
       renderMeters();
     }
   }
@@ -392,15 +528,18 @@ $('startCam').addEventListener('click',async()=>{
       video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
     S.stream=st;S.track=st.getVideoTracks()[0];
     vid.srcObject=st;await vid.play();
-    S.vw=vid.videoWidth;S.vh=vid.videoHeight;
+    S.vw=vid.videoWidth;S.vh=vid.videoHeight;fitStage();
     const cap=S.track.getCapabilities?S.track.getCapabilities():{};
     $('camInfo').textContent=`${S.vw}×${S.vh} · ${S.track.label||'câmera'}`;
     $('lockBtn').disabled=!(cap.focusMode||cap.exposureMode);
     $('torchBtn').disabled=!cap.torch;
     if(cap.zoom){$('zoomWrap').classList.remove('hidden');
       const z=$('zoom');z.min=cap.zoom.min;z.max=cap.zoom.max;z.step=cap.zoom.step||.1;z.value=S.track.getSettings().zoom||cap.zoom.min;
-      z.oninput=async()=>{$('zoomO').textContent=(+z.value).toFixed(1)+'×';
+      $('zoomO').textContent=(+z.value).toFixed(1)+'×';
+      $('zoomMsg').textContent='Zoom óptico/digital até '+cap.zoom.max.toFixed(1)+'×.';
+      z.oninput=async()=>{$('zoomO').textContent=(+z.value).toFixed(1)+'×';S.cols=null;
         try{await S.track.applyConstraints({advanced:[{zoom:+z.value}]});}catch(e){}};}
+    else $('zoomMsg').innerHTML='<span class="warn">Este navegador não controla o zoom da câmera (iOS). Aproxime o celular do visor — 15 a 20 cm.</span>';
     if(!(cap.focusMode||cap.exposureMode))
       $('camInfo').textContent+=' · este navegador não permite travar foco/exposição por software (iOS). Use o toque-e-segure do app nativo como referência e mantenha a luz constante.';
     $('checkBtn').disabled=false;$('runBtn').disabled=false;
@@ -428,12 +567,60 @@ function pt(ev){const r=stage.getBoundingClientRect();
 stage.addEventListener('pointerdown',ev=>{
   if(!stage._b)return;const[x,y]=pt(ev),b=stage._b;let bi=-1,bd=1e9;
   S.quad.forEach((p,i)=>{const d=Math.hypot(b.ox+p[0]*b.dw-x,b.oy+p[1]*b.dh-y);if(d<bd){bd=d;bi=i;}});
-  if(bd<50){S.drag=bi;stage.setPointerCapture(ev.pointerId);ev.preventDefault();}});
+  if(bd<50){S.drag=bi;S.magPt=[x,y];stage.setPointerCapture(ev.pointerId);ev.preventDefault();}});
 stage.addEventListener('pointermove',ev=>{
   if(S.drag<0||!stage._b)return;const[x,y]=pt(ev),b=stage._b;
+  S.magPt=[x,y];
   S.quad[S.drag]=[Math.max(0,Math.min(1,(x-b.ox)/b.dw)),Math.max(0,Math.min(1,(y-b.oy)/b.dh))];
   saveCfg();ev.preventDefault();});
-['pointerup','pointercancel'].forEach(e=>stage.addEventListener(e,()=>S.drag=-1));
+['pointerup','pointercancel'].forEach(e=>stage.addEventListener(e,()=>{S.drag=-1;S.magPt=null;}));
+$('rotBtn').addEventListener('click',()=>{S.quad.push(S.quad.shift());saveCfg();});
+$('resetQuad').addEventListener('click',()=>{
+  S.quad=[[.25,.33],[.75,.33],[.75,.67],[.25,.67]];S.cols=null;saveCfg();});
+
+/* auto-ajuste das colunas de dígito */
+$('autoBtn').addEventListener('click',()=>{
+  S.cols=null;
+  const err=autoFit();
+  $('autoMsg').innerHTML=err
+    ? '<span class="bad">'+err+'</span>'
+    : '<span class="ok">Colunas ajustadas — confira o quadro Segmentos.</span>';
+  saveCfg();
+});
+
+/* zoom por passos; o ajuste fino continua disponível */
+function applyZoom(z){
+  if(!S.track||!S.track.getCapabilities)return;
+  const cap=S.track.getCapabilities();
+  if(!cap.zoom){$('zoomMsg').innerHTML='<span class="warn">Este navegador não controla o zoom da câmera (iOS). Aproxime o celular do visor.</span>';return;}
+  const v=Math.max(cap.zoom.min,Math.min(cap.zoom.max,z));
+  S.track.applyConstraints({advanced:[{zoom:v}]}).then(()=>{
+    const r=$('zoom');if(r)r.value=v;
+    const o=$('zoomO');if(o)o.textContent=(+v).toFixed(1)+'×';
+    $('zoomMsg').textContent=z>cap.zoom.max?('Máximo desta câmera: '+cap.zoom.max.toFixed(1)+'×'):'';
+    S.cols=null;
+  }).catch(()=>{});
+}
+document.querySelectorAll('.zb').forEach(b=>
+  b.addEventListener('click',()=>applyZoom(+b.dataset.z)));
+
+/* intervalo de coleta por botões */
+function setInterval_(s){
+  $('interval').value=s;
+  document.querySelectorAll('.ib').forEach(b=>
+    b.style.borderColor=(+b.dataset.i===+s)?css('--accent'):'');
+  saveCfg();
+}
+document.querySelectorAll('.ib').forEach(b=>
+  b.addEventListener('click',()=>setInterval_(+b.dataset.i)));
+$('ibCustom').addEventListener('click',()=>{
+  $('interval').focus();$('interval').select();
+  document.querySelectorAll('.ib').forEach(b=>b.style.borderColor='');
+});
+$('interval').addEventListener('input',()=>{
+  document.querySelectorAll('.ib').forEach(b=>
+    b.style.borderColor=(+b.dataset.i===+$('interval').value)?css('--accent'):'');
+});
 
 document.querySelectorAll('.sl input').forEach(i=>{
   const o=i.parentElement.querySelector('o');
@@ -443,13 +630,14 @@ document.querySelectorAll('.sl input').forEach(i=>{
 /* ============ persistência ============ */
 const CFG='termolog.cfg',RUN='termolog.run';
 function saveCfg(){
-  try{localStorage.setItem(CFG,JSON.stringify({quad:S.quad,
+  try{localStorage.setItem(CFG,JSON.stringify({quad:S.quad,cols:S.cols,
     f:['nDig','nDec','pol','mL','mR','mT','mB','gap','skew','thr','interval','maxRate','tMin','tMax']
       .reduce((a,k)=>(a[k]=$(k).value,a),{})}));}catch(e){}
 }
 function loadCfg(){
   try{const c=JSON.parse(localStorage.getItem(CFG)||'null');if(!c)return;
     if(c.quad)S.quad=c.quad;
+    if(c.cols)S.cols=c.cols;
     Object.keys(c.f||{}).forEach(k=>{if($(k))$(k).value=c.f[k];});
     document.querySelectorAll('.sl input').forEach(i=>i.dispatchEvent(new Event('input')));
   }catch(e){}
@@ -585,7 +773,7 @@ function render(){
   $('stats').innerHTML=`<div><b>${f.length}</b>leituras</div><div><b>${ok}</b>OK</div>
     <div><b>${co}</b>corrigidas</div><div><b>${bd}</b>duvidosas</div>
     <div><b>${(ac*100).toFixed(0)}%</b>confiança</div><div><b>${jt}</b>ms jitter máx</div>`;
-  ['csvBtn','jsonBtn','sheetBtn'].forEach(b=>$(b).disabled=!f.length);
+  ['csvBtn','jsonBtn','sheetBtn','pngBtn'].forEach(b=>$(b).disabled=!f.length);
   $('tbl').querySelector('tbody').innerHTML=f.slice(-300).map((r,i)=>{
     const c={OK:'pok',CORRIGIDA:'pcorr','CONGELADA?':'pwarn',DUVIDOSA:'pwarn',FALHA:'pbad'}[r.status]||'pwarn';
     return `<tr><td>${i+1}</td><td>${r.t.toFixed(1)}</td><td>${r.raw==null?'—':r.raw.toFixed(nd)}</td>
@@ -694,6 +882,84 @@ h1{font-size:17px}div{display:grid;grid-template-columns:repeat(auto-fill,minmax
 figure{margin:0;text-align:center;font:11px ui-monospace,monospace;color:#9aa}
 img{width:100%;border-radius:4px;border:1px solid #333}</style>
 <h1>Termolog — imagem de cada leitura (${S.rows.length})</h1><div>${body}</div>`,'text/html');
+});
+$('pngBtn').addEventListener('click',()=>{
+  const f=S.rows.filter(r=>r.corr!=null);
+  if(f.length<2){$('runStat').textContent='Poucos pontos para gerar o gráfico.';return;}
+  const nd=+$('nDec').value,SA='-apple-system,Helvetica,Arial,sans-serif';
+  const W=1600,H=980,p={l:150,r:60,t:128,b:140},PW=W-p.l-p.r,PH=H-p.t-p.b;
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,W,H);
+  const xs=f.map(r=>r.t),ys=f.map(r=>r.corr);
+  const x1=Math.max.apply(null,xs)||1,x0=0;
+  let y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys);
+  const pad=Math.max(.5,(y1-y0)*.1);
+  y0=Math.floor((y0-pad)*2)/2;y1=Math.ceil((y1+pad)*2)/2;
+  const X=v=>p.l+(v-x0)/((x1-x0)||1)*PW,Y=v=>p.t+PH-(v-y0)/((y1-y0)||1)*PH;
+  // titulo
+  g.fillStyle='#111';g.textAlign='left';g.textBaseline='alphabetic';
+  g.font='600 38px '+SA;g.fillText('Curva de resfriamento',p.l,62);
+  g.fillStyle='#666';g.font='400 21px '+SA;
+  const corr=S.rows.filter(r=>r.status==='CORRIGIDA').length;
+  g.fillText(`${S.rows.length} leituras · intervalo ${(+$('interval').value)} s · `
+    +`termômetro TP101 (resolução ${(1/Math.pow(10,nd)).toFixed(nd)} °C, exatidão ±1 °C) · `
+    +`${corr} ponto(s) corrigido(s) pelo decodificador temporal`,p.l,94);
+  // grade
+  g.strokeStyle='#e4e4e4';g.lineWidth=1;
+  g.fillStyle='#444';g.font='400 20px '+SA;
+  for(let i=0;i<=5;i++){const v=y0+(y1-y0)*i/5,y=Y(v);
+    g.beginPath();g.moveTo(p.l,y);g.lineTo(p.l+PW,y);g.stroke();
+    g.textAlign='right';g.textBaseline='middle';g.fillText(v.toFixed(1),p.l-14,y);}
+  for(let i=0;i<=6;i++){const v=x0+(x1-x0)*i/6,x=X(v);
+    g.beginPath();g.moveTo(x,p.t);g.lineTo(x,p.t+PH);g.stroke();
+    g.textAlign='center';g.textBaseline='top';g.fillText(v.toFixed(0),x,p.t+PH+14);}
+  g.strokeStyle='#333';g.lineWidth=1.6;
+  g.beginPath();g.moveTo(p.l,p.t);g.lineTo(p.l,p.t+PH);g.lineTo(p.l+PW,p.t+PH);g.stroke();
+  // eixos
+  g.fillStyle='#111';g.font='500 23px '+SA;g.textAlign='center';g.textBaseline='top';
+  g.fillText('Tempo decorrido (s)',p.l+PW/2,p.t+PH+58);
+  g.save();g.translate(44,p.t+PH/2);g.rotate(-Math.PI/2);
+  g.textBaseline='middle';g.fillText('Temperatura (°C)',0,0);g.restore();
+  // eventos
+  g.setLineDash([7,6]);g.strokeStyle='#c08a1e';g.lineWidth=1.6;
+  g.font='500 18px '+SA;g.fillStyle='#8a6210';g.textAlign='left';g.textBaseline='top';
+  S.rows.forEach(r=>{if(!r.ev)return;
+    g.beginPath();g.moveTo(X(r.t),p.t);g.lineTo(X(r.t),p.t+PH);g.stroke();
+    g.fillText(r.ev,X(r.t)+6,p.t+6);});
+  g.setLineDash([]);
+  // bruto
+  g.strokeStyle='#b4b4b4';g.lineWidth=1.6;g.beginPath();let st=false;
+  S.rows.forEach(r=>{if(r.raw==null){st=false;return;}
+    st?g.lineTo(X(r.t),Y(r.raw)):g.moveTo(X(r.t),Y(r.raw));st=true;});
+  g.stroke();
+  // corrigido
+  g.strokeStyle='#0f6f7a';g.lineWidth=3.4;g.lineJoin='round';g.lineCap='round';
+  g.beginPath();st=false;
+  S.rows.forEach(r=>{if(r.corr==null){st=false;return;}
+    st?g.lineTo(X(r.t),Y(r.corr)):g.moveTo(X(r.t),Y(r.corr));st=true;});
+  g.stroke();
+  S.rows.forEach(r=>{if(r.corr==null)return;
+    if(r.status==='CORRIGIDA'||r.status==='DUVIDOSA'||r.status==='CONGELADA?'){
+      g.fillStyle=r.status==='CORRIGIDA'?'#6b4ea8':'#a93226';
+      g.beginPath();g.arc(X(r.t),Y(r.corr),6,0,7);g.fill();}});
+  // legenda
+  let lx=p.l,ly=H-56;
+  const key=(col,lab,dot)=>{
+    g.strokeStyle=col;g.fillStyle=col;g.lineWidth=dot?1:3.4;
+    if(dot){g.beginPath();g.arc(lx+11,ly,6,0,7);g.fill();}
+    else{g.beginPath();g.moveTo(lx,ly);g.lineTo(lx+32,ly);g.stroke();}
+    g.fillStyle='#333';g.font='400 20px '+SA;g.textAlign='left';g.textBaseline='middle';
+    g.fillText(lab,lx+44,ly);lx+=g.measureText(lab).width+92;};
+  key('#b4b4b4','Leitura bruta');key('#0f6f7a','Após correção temporal');
+  key('#6b4ea8','Ponto corrigido',true);key('#a93226','Duvidosa',true);
+  g.fillStyle='#999';g.font='400 17px '+SA;g.textAlign='right';
+  g.fillText('Termolog · '+new Date().toLocaleString('pt-BR'),W-p.r,H-26);
+  c.toBlob(b=>{
+    const u=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=u;a.download='termolog_grafico.png';document.body.appendChild(a);a.click();
+    setTimeout(()=>{a.remove();URL.revokeObjectURL(u);},1200);
+  },'image/png');
 });
 $('clearBtn').addEventListener('click',()=>{
   S.rows=[];try{localStorage.removeItem(RUN);}catch(e){}
